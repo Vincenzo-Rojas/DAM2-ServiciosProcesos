@@ -1,0 +1,14 @@
+entorno2/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+lib/
+lib64/
+include/
+Scripts/
+salida_exam1.txt
+PSP/venv
