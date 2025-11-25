@@ -1,2 +1,2 @@
 # DAM2-ServiciosProcesos
-Incluye prácticas sobre programación de servicios, procesos en segundo plano, hilos, sincronización y automatización de tareas en aplicaciones.
+Rama dedicada a crear practicas para trabajar en equipos, las practicas de la asignatura
