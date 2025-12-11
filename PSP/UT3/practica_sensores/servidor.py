@@ -1,191 +1,150 @@
+# --------------------------------------------------------------------------------
+# Cliente TCP para enviar datos simulados de sensores a un servidor
+# Qué hace:
+# - Simula sensores de temperatura y humedad.
+# - Envía sus datos a un servidor TCP en localhost:6000.
+# - Calcula un checksum MD5 de los datos para verificar integridad.
+# - Usa framing: primero envía la longitud del mensaje, luego el JSON.
+# - Reintenta el envío hasta 3 veces si hay errores.
+# Fallos posibles:
+# - No maneja desconexiones inesperadas del servidor más allá de los reintentos.
+# - Solo funciona con servidores que esperen framing de 4 bytes + JSON.
+# - No valida la respuesta del servidor más allá de decodificar JSON.
+# --------------------------------------------------------------------------------
+
+# Importamos la librería 'socket' para manejar conexiones TCP/IP con el servidor
 import socket
-import threading
+
+# Importamos 'json' para poder convertir diccionarios de Python a JSON y viceversa
 import json
+
+# Importamos 'time' para obtener timestamps y pausas en la ejecución
 import time
+
+# Importamos 'hashlib' para calcular checksums (MD5) de los datos enviados
 import hashlib
-import queue
-import logging
-import os
 
-# Configuración de logging: crea un archivo server.log y registra mensajes con timestamps
-logging.basicConfig(filename="server.log", level=logging.DEBUG,
-                    format="%(asctime)s - %(levelname)s - %(message)s")
+# Importamos 'random' para generar valores simulados de sensores
+import random
 
-# Archivo donde se guardarán los datos persistentes de los sensores
-ARCHIVO_SENSORES = "sensores.json"
+# Definimos la dirección IP del servidor al que se conectará el cliente
+HOST = "127.0.0.1"  # localhost, servidor en la misma máquina
+# Definimos el puerto TCP donde escucha el servidor
+PORT = 6000
+# Número máximo de intentos de envío por mensaje en caso de error
+INTENTO_MAX = 3
 
-# Carga inicial de datos si ya existe el archivo, sino crea un diccionario vacío
-if os.path.exists(ARCHIVO_SENSORES):
-    with open(ARCHIVO_SENSORES, "r") as f:
-        sensores = json.load(f)
-else:
-    sensores = {}
-
-# Lock para proteger acceso concurrente a la estructura de sensores
-lock_sensores = threading.Lock()
-
-# Cola para almacenar mensajes entrantes y procesarlos en orden
-cola_mensajes = queue.Queue()
-
-
-# ---------- FUNCIONES AUXILIARES ----------
-
+# --------------------------------------------------------------------------------
+# Función para calcular un checksum MD5 de un diccionario
+# Sirve para verificar que los datos no se han modificado durante el envío
+# --------------------------------------------------------------------------------
 def calcular_checksum(data_dict):
-    """Calcula un checksum MD5 del contenido de un diccionario JSON"""
-    cadena = json.dumps(data_dict, sort_keys=True)  # ordenar para consistencia
+    # Convertimos el diccionario a una cadena JSON con claves ordenadas
+    cadena = json.dumps(data_dict, sort_keys=True)
+    # Calculamos y devolvemos el hash MD5 de la cadena codificada en bytes
     return hashlib.md5(cadena.encode()).hexdigest()
 
+# --------------------------------------------------------------------------------
+# Función que envía los datos de un sensor al servidor
+# Parámetros:
+# - sensor_id: identificador único del sensor
+# - tipo: tipo de sensor ('temperatura', 'humedad', etc.)
+# - valor: valor numérico medido por el sensor
+# Qué hace:
+# - Incluye un checksum para verificar integridad
+# - Usa framing (envía la longitud del mensaje antes del JSON)
+# - Reintenta en caso de fallo de conexión
+# - Procesa la respuesta del servidor
+# --------------------------------------------------------------------------------
+def enviar_datos(sensor_id, tipo, valor):
+    intento = 0  # Contador de intentos de envío
+    enviado = False  # Indicador de si el mensaje fue enviado con éxito
 
-def validar_json(data):
-    """
-    Valida que el JSON tenga todos los campos, rangos correctos,
-    timestamp coherente y checksum válido.
-    """
-    campos_obligatorios = ["sensor_id", "timestamp", "tipo", "valor", "checksum"]
-    for campo in campos_obligatorios:
-        if campo not in data:
-            return False, f"Falta campo: {campo}"
-
-    # Validación de checksum
-    checksum_recibido = data["checksum"]
-    copia = data.copy()
-    copia.pop("checksum")
-    if calcular_checksum(copia) != checksum_recibido:
-        return False, "Checksum inválido"
-
-    # Validación de rangos según tipo de sensor
-    tipo = data["tipo"]
-    valor = data["valor"]
-    timestamp = data["timestamp"]
-    if tipo == "temperatura" and not (-50 <= valor <= 100):
-        return False, "Valor fuera de rango para temperatura"
-    if tipo == "humedad" and not (0 <= valor <= 100):
-        return False, "Valor fuera de rango para humedad"
-
-    # Timestamp no puede estar en el futuro (+5s de tolerancia)
-    if timestamp > time.time() + 5:
-        return False, "Timestamp futuro no permitido"
-
-    return True, "ok"
-
-
-def guardar_sensores():
-    """Guarda los datos de sensores en un archivo JSON para persistencia"""
-    try:
-        with lock_sensores:
-            with open(ARCHIVO_SENSORES, "w") as f:
-                json.dump(sensores, f)
-    except Exception as e:
-        logging.error(f"Error guardando sensores: {e}")
-
-
-def procesar_mensajes():
-    """
-    Hilo que procesa mensajes de la cola.
-    Extrae mensajes, valida, detecta duplicados y guarda los datos.
-    """
-    while True:
-        mensaje, conn = cola_mensajes.get()  # obtiene un mensaje de la cola
+    # Bucle que reintenta enviar el mensaje hasta INTENTO_MAX veces
+    while intento < INTENTO_MAX and not enviado:
+        intento += 1  # Aumentamos el contador de intentos
         try:
-            valido, mensaje_validacion = validar_json(mensaje)
-            if valido:
-                sensor_id = mensaje["sensor_id"]
-                timestamp = mensaje["timestamp"]
+            # Creamos un socket TCP (SOCK_STREAM)
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            # Establecemos un timeout de 5 segundos para evitar bloqueo indefinido
+            s.settimeout(5)
+            # Conectamos el socket al servidor
+            s.connect((HOST, PORT))
 
-                with lock_sensores:
-                    id_timestamp = f"{sensor_id}_{timestamp}"
-                    if id_timestamp not in sensores:
-                        # Guardar datos válidos y persistir
-                        sensores[id_timestamp] = mensaje
-                        guardar_sensores()
-                        respuesta = {"status": "ok", "mensaje": "Datos recibidos"}
-                        logging.info(f"Sensor {sensor_id}: datos aceptados")
-                    else:
-                        respuesta = {"status": "error", "mensaje": "Duplicado detectado"}
-                        logging.warning(f"Sensor {sensor_id}: mensaje duplicado")
-            else:
-                # JSON inválido
-                respuesta = {"status": "error", "mensaje": mensaje_validacion}
-                logging.warning(f"Validación fallida: {mensaje_validacion}")
+            # Construimos el diccionario de datos del sensor
+            data = {
+                "sensor_id": sensor_id,      # Identificador del sensor
+                "timestamp": time.time(),    # Momento en que se tomó la lectura
+                "tipo": tipo,                # Tipo de sensor
+                "valor": valor               # Valor medido
+            }
+            # Calculamos el checksum y lo añadimos al diccionario
+            data["checksum"] = calcular_checksum(data)
 
-            enviar_respuesta(conn, respuesta)
-        except Exception as e:
-            logging.error(f"Error procesando mensaje: {e}")
-            try:
-                enviar_respuesta(conn, {"status": "error", "mensaje": str(e)})
-            except:
-                pass  # si falla el envío, se ignora
+            # Convertimos el diccionario a bytes usando JSON
+            mensaje_bytes = json.dumps(data).encode()
+            # Calculamos la longitud del mensaje en bytes
+            longitud = len(mensaje_bytes)
+            # Enviamos primero la longitud (4 bytes, big-endian) y luego el JSON
+            s.sendall(longitud.to_bytes(4, "big") + mensaje_bytes)
 
-
-def enviar_respuesta(conn, respuesta):
-    """
-    Envía un JSON al cliente usando framing:
-    primero se envía 4 bytes con la longitud, luego el JSON.
-    Esto permite que el cliente sepa cuánto leer.
-    """
-    try:
-        mensaje_bytes = json.dumps(respuesta).encode()
-        longitud = len(mensaje_bytes)
-        conn.sendall(longitud.to_bytes(4, "big") + mensaje_bytes)
-    except Exception as e:
-        logging.error(f"Error enviando respuesta: {e}")
-
-
-def manejar_cliente(conn, addr):
-    """
-    Hilo que recibe datos de un cliente.
-    - Recibe el tamaño del mensaje (4 bytes)
-    - Recibe el mensaje completo según la longitud
-    - Pone el mensaje en la cola para procesarlo
-    """
-    while True:
-        try:
-            # Leer longitud del mensaje
-            header = conn.recv(4)
+            # ---------- Recepción de la respuesta del servidor ----------
+            # Leemos los primeros 4 bytes, que indican la longitud del mensaje
+            header = s.recv(4)
+            # Si no recibimos 4 bytes completos, algo salió mal
             if not header or len(header) < 4:
-                return  # cliente desconectado
-            longitud = int.from_bytes(header, "big")
+                print("Error: no se recibió header de respuesta")
+                s.close()
+                continue  # Volvemos a intentar el envío
 
-            # Leer el mensaje completo
-            recibido = b""
-            while len(recibido) < longitud:
-                paquete = conn.recv(longitud - len(recibido))
-                if not paquete:
-                    return
+            # Convertimos los 4 bytes a un número entero (longitud del JSON)
+            longitud_res = int.from_bytes(header, "big")
+            recibido = b""  # Buffer donde almacenaremos los bytes recibidos
+
+            # Bucle para leer todos los bytes del mensaje según la longitud
+            while len(recibido) < longitud_res:
+                paquete = s.recv(longitud_res - len(recibido))
+                if not paquete:  # Si no recibimos más datos, salimos
+                    break
                 recibido += paquete
 
+            # Intentamos decodificar el JSON recibido
             try:
-                data = json.loads(recibido.decode())
-                cola_mensajes.put((data, conn))  # poner en la cola para procesar
+                respuesta = json.loads(recibido.decode())
+                print(f"Servidor respondió: {respuesta}")
+                enviado = True  # Si llegó la respuesta correctamente, terminamos el bucle
             except json.JSONDecodeError:
-                respuesta = {"status": "error", "mensaje": "JSON malformado"}
-                enviar_respuesta(conn, respuesta)
-                logging.warning(f"JSON malformado recibido de {addr}")
-        except socket.error:
-            return  # desconexión o error de socket
+                # Si el JSON está malformado, mostramos mensaje de error
+                print("Error: JSON de respuesta malformado")
+
+            # Cerramos el socket después de enviar y recibir
+            s.close()
+
+        # Si ocurre un timeout en la conexión, mostramos mensaje y reintentamos
+        except socket.timeout:
+            print("Timeout en conexión, reintentando...")
+
+        # Si hay algún error de socket, mostramos el error y reintentamos
+        except socket.error as e:
+            print(f"Error de socket: {e}, reintentando...")
+
+        # Capturamos cualquier otra excepción desconocida
         except Exception as e:
-            logging.error(f"Excepción cliente {addr}: {e}")
-            return
+            print(f"Excepción desconocida: {e}")
 
-
-def servidor(host="0.0.0.0", port=6000):
-    """Función principal del servidor"""
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.bind((host, port))
-    s.listen(10)
-    logging.info(f"Servidor de sensores escuchando en {host}:{port}")
-
-    # Hilo de procesamiento de cola
-    threading.Thread(target=procesar_mensajes, daemon=True).start()
-
-    while True:
-        try:
-            conn, addr = s.accept()
-            # Crear un hilo por cliente
-            threading.Thread(target=manejar_cliente, args=(conn, addr), daemon=True).start()
-        except Exception as e:
-            logging.error(f"Error aceptando cliente: {e}")
-
-
+# --------------------------------------------------------------------------------
+# BLOQUE PRINCIPAL
+# --------------------------------------------------------------------------------
 if __name__ == "__main__":
-    servidor()
+    # Lista de sensores simulados: ID y tipo
+    sensores = [("S1", "temperatura"), ("S2", "humedad")]
+
+    # Bucle que envía datos para cada sensor
+    for sensor_id, tipo in sensores:
+        # Generamos un valor aleatorio para el sensor
+        # Temperatura: 20-30, Humedad: 30-70
+        valor = random.uniform(20, 30) if tipo == "temperatura" else random.uniform(30, 70)
+        # Llamamos a la función para enviar los datos
+        enviar_datos(sensor_id, tipo, valor)
+        # Esperamos 1 segundo antes de enviar el siguiente sensor
+        time.sleep(1)
