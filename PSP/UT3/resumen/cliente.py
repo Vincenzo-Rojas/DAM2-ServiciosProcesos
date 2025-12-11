@@ -1,51 +1,69 @@
+from pprint import pprint
 import socket
 import json
 import os
 import struct
+import threading
 import time
 
-def descargar_archivo(nombre, host="127.0.0.1", port=5007):
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.connect((host, port))
 
-    s.send(nombre.encode())  # envío nombre
-
-    tamaño = int(s.recv(4096).decode())
-    if tamaño == -1:
-        print("El archivo no existe en el servidor.")
-        s.close()
-        return
-
-    s.send(b"OK")  # sincronización simple
-
-    f = open("descargado_" + nombre, "wb")
-    recibido = 0
-
-    while recibido < tamaño:
-        data = s.recv(4096)
-        if not data:
-            break
-        f.write(data)
-        recibido += len(data)
-
-    f.close()
-    s.close()
-    print(f"Archivo descargado como descargado_{nombre}")
+puede_escribir = False
+activo = True  # Permite "salir" sin cerrar el programa
 
 
-def chat_enviar(mensaje, host="127.0.0.1", port=5001):
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    s.sendto(mensaje.encode(), (host, port))
+def escuchar(sock):
+    global puede_escribir, activo
+    while activo:
+        try:
+            data, _ = sock.recvfrom(4096)
+            if data:
+                mensaje = data.decode()
+                print(mensaje)
+                # Activar escritura si llega mensaje distinto a espera
+                if "WAIT" not in mensaje:
+                    puede_escribir = True
+        except Exception as e:
+            # Solo imprimir el error, no se detiene el bucle
+            print(f"[ERROR] en escuchar: {e}")
 
+def enviar(sock):
+    global puede_escribir, activo
+    while activo:
+        msg = input("")
+        if msg.lower() == "salir":
+            sock.sendto("SALIR".encode(), ("127.0.0.1", 5001))
+            activo = False
+            print("Te has desconectado del chat.")
+        elif puede_escribir:
+            sock.sendto(msg.encode(), ("127.0.0.1", 5001))
+        else:
+            print("Aún no hay dos clientes conectados. Espera un momento.")
+
+def cliente_chat():
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+    # Enviar JOIN al conectarse
+    sock.sendto("JOIN".encode(), ("127.0.0.1", 5001))
+
+    hilo_escucha = threading.Thread(target=escuchar, args=(sock,), daemon=True)
+    hilo_escucha.start()
+
+    hilo_envio = threading.Thread(target=enviar, args=(sock,))
+    hilo_envio.start()
 
 def ejecutar_comando(cmd, host="127.0.0.1", port=5002):
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.connect((host, port))
-    s.send(cmd.encode())
+    s.send(json.dumps({'comando': cmd}).encode())
     data = s.recv(999999)
     s.close()
-    return data.decode()
-
+    recibido = json.loads(data.decode())
+    
+    # Para mostrar salida sin escapes de \n
+    if recibido['status'] == 'OK':
+        print(recibido['res'])
+    
+    return recibido
 
 def enviar_archivo(path, host="127.0.0.1", port=5003):
     tamaño = os.path.getsize(path)
@@ -95,6 +113,34 @@ def pedir_ntp(host="127.0.0.1", port=5006):
     unix_time = ntp_time - 2208988800
     return unix_time
 
+def descargar_archivo(nombre, host="127.0.0.1", port=5007):
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.connect((host, port))
+
+    s.send(nombre.encode())  # envío nombre
+
+    tamaño = int(s.recv(4096).decode())
+    if tamaño == -1:
+        print("El archivo no existe en el servidor.")
+        s.close()
+        return
+
+    s.send(b"OK")  # sincronización simple
+
+    f = open("descargado_" + nombre, "wb")
+    recibido = 0
+
+    while recibido < tamaño:
+        data = s.recv(4096)
+        if not data:
+            break
+        f.write(data)
+        recibido += len(data)
+
+    f.close()
+    s.close()
+    print(f"Archivo descargado como descargado_{nombre}")
+
 
 if __name__ == "__main__":
     print("1) Enviar chat")
@@ -108,9 +154,9 @@ if __name__ == "__main__":
     op = input("Seleccione: ")
 
     if op == "1":
-        chat_enviar(input("Mensaje: "))
+        cliente_chat()
     elif op == "2":
-        print(ejecutar_comando(input("Comando: ")))
+        ejecutar_comando(input("Comando: "))
     elif op == "3":
         enviar_archivo(input("Ruta del archivo: "))
     elif op == "4":

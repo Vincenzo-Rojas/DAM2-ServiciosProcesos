@@ -1,111 +1,86 @@
 import socket
 import json
 import time
-from datetime import datetime
+import hashlib
+import random
 
-FREC_ENVIO = 25 #ENVIO CADA 25 SEGUNDOS
-DIR_SERVER = ("127.0.0.1", 5000)
+HOST = "127.0.0.1"
+PORT = 6000
+INTENTO_MAX = 3  # número máximo de reintentos por envío
 
 
-def set_frec(valor):
-    global FREC_ENVIO
-    try:
-        FREC_ENVIO = int(valor)
-        print(f"Nueva frecuencia establecida por servidor: {FREC_ENVIO}")
-    except Exception as e:
-        print(f"Error durante el cambio de frecuencia: {e}")
+def calcular_checksum(data_dict):
+    """Calcula un checksum MD5 del diccionario JSON"""
+    cadena = json.dumps(data_dict, sort_keys=True)
+    return hashlib.md5(cadena.encode()).hexdigest()
 
-def enviar(json_envio) -> bool:
-    try:
-        sock.send(json.dumps(json_envio).encode())
-    except Exception as e:
-        print(f"Error al enviar: {e}")
-        return False
-    return True
 
-def enviar_datos(cliente, tipo, valor) -> bool:
-    json_envio = {
-        "sensor_id": {
-            "ip": cliente.getsockname()[0],
-            "puerto": cliente.getsockname()[1],
-            "fd": cliente.fileno()
-        },
-        "fecha": datetime.now().isoformat(),
-        "tipo": tipo,
-        "valor": valor
-    }
-    return enviar(json_envio)
-
-def recibir(cliente):
+def enviar_datos(sensor_id, tipo, valor):
     """
-    Recibe un mensaje JSON desde el servidor, lo decodifica. 
-    Devuelve el diccionario resultadante.
-    Si ocurre un error o se reciben datos vacíos,devuelve None.
+    Envía datos de un sensor al servidor:
+    - Incluye checksum
+    - Usa framing (longitud + JSON)
+    - Reintenta en caso de error
+    - Procesa la respuesta del servidor
     """
-    try:
-        data = sock.recv(1024)
-        if not data:
-            print("No hay datos recibidos")
-            return None
-        return json.loads(data.decode())
-    except Exception as e:
-        print(f"Error al recibir/parsear respuesta: {e}")
-        return None
+    intento = 0
+    enviado = False
+    while intento < INTENTO_MAX and not enviado:
+        intento += 1
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(5)  # timeout de conexión
+            s.connect((HOST, PORT))
 
-def envio(cliente, tipo, valor):
-    tipo = input("Tipo de sensor: ")
-    valor = input("Valor inicial: ")
-    respuesta = None
-    fin = False
+            data = {
+                "sensor_id": sensor_id,
+                "timestamp": time.time(),
+                "tipo": tipo,
+                "valor": valor
+            }
+            data["checksum"] = calcular_checksum(data)
 
-    while not fin:
-        # Enviar datos
-        enviado = enviar_datos(sock, tipo, valor)
+            # Framing: enviar longitud antes del mensaje
+            mensaje_bytes = json.dumps(data).encode()
+            longitud = len(mensaje_bytes)
+            s.sendall(longitud.to_bytes(4, "big") + mensaje_bytes)
 
-        if not enviado:
-            print("Fallo al enviar, reintentando...")
-            time.sleep(1)
-        else:
-            # Recibir respuesta
-            respuesta = recibir(sock)
+            # Recibir respuesta del servidor
+            header = s.recv(4)
+            if not header or len(header) < 4:
+                print("Error: no se recibió header de respuesta")
+                s.close()
+                continue
 
-            if respuesta is None:
-                print("Respuesta inválida, reintentando...")
-                time.sleep(1)
-            else:
-                # Procesar comandos del servidor
-                if respuesta.get("res") == "OK":
-                    time.sleep(FREC_ENVIO)
-                elif respuesta.get("res") == "SET_FREC":
-                    set_frec(respuesta["valor"])
-                elif respuesta.get("res") == "FIN":
-                    print("Servidor ordenó FIN. Terminando envío.")
-                    fin = True
-                else:
-                    print("Servidor devolvió error, reintentando...")
+            longitud_res = int.from_bytes(header, "big")
+            recibido = b""
+            while len(recibido) < longitud_res:
+                paquete = s.recv(longitud_res - len(recibido))
+                if not paquete:
+                    break
+                recibido += paquete
 
-def menu():
-    print("""
-        ---------- MENU -------------
-          1 - Iniciar sensor
-          2 - Ajustar tiempo de envio
-          3 - Terminar programa
-    """)
-def main():
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.connect(DIR_SERVER)
-    fin = False
-    while not fin:
-        menu()
-        op = input("Elige una opcion")
+            try:
+                respuesta = json.loads(recibido.decode())
+                print(f"Servidor respondió: {respuesta}")
+                enviado = True
+            except json.JSONDecodeError:
+                print("Error: JSON de respuesta malformado")
 
-        match(op):
-            case 1:
-                envio(sock)
-            case 2:
-                set_frec(input("Dime la nueva frecuencia de muestras del sensor en segundos"))
-            case 3:
-                fin = True
+            s.close()
+        except socket.timeout:
+            print("Timeout en conexión, reintentando...")
+        except socket.error as e:
+            print(f"Error de socket: {e}, reintentando...")
+        except Exception as e:
+            print(f"Excepción desconocida: {e}")
+
 
 if __name__ == "__main__":
-    main()
+    # Simulación de envío de sensores
+    sensores = [("S1", "temperatura"), ("S2", "humedad")]
+    for sensor_id, tipo in sensores:
+        # Genera valores aleatorios para la simulación
+        valor = random.uniform(20, 30) if tipo == "temperatura" else random.uniform(30, 70)
+        enviar_datos(sensor_id, tipo, valor)
+        time.sleep(1)  # espera 1 segundo entre envíos
