@@ -1,0 +1,17 @@
+{
+  "name": "ut4",
+  "version": "1.0.0",
+  "description": "",
+  "license": "ISC",
+  "author": "jose",
+  "type": "module",
+  "main": "pares.mjs",
+  "scripts": {
+    "dev": "node pares.mjs",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "express": "^5.2.1",
+    "is-even": "^1.0.0"
+  }
+}
