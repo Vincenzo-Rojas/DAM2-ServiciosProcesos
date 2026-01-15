@@ -8,6 +8,11 @@ const rutaActual = path.resolve(".")
 //decodificado de json en body
 app.use(express.json())
 app.use(express.urlencoded({extended:true}))
+// middleware logging
+app.use((req, res, next) => {
+    console.log(req.path)
+    next()
+})
 
 
 //envio de json
@@ -27,8 +32,8 @@ app.get("/nuevo-usuario", (req, res) => {
     const {email, password} = req.query
     console.log(email, password)
     if(!email || !password || email.trim() == "" || password.trim() == ""){ // no existe alguna de las variables
-        res.status = 400
-        res.send("ERROR: La petición necesita el email y la contraseña")
+        res.status(400)
+        .send("ERROR: La petición necesita el email y la contraseña")
     }else{
         res.send(`<h1>Usuario creado</h1>
                 <h2>Email: ${email}</h2>
@@ -47,9 +52,10 @@ app.post("/archivo", (req, res) => {
     const fichero = req.body.fichero
     if(!fichero || fichero.trim() == ""){
         res.sendStatus(400)
+    }else{
+        const rutaCompleta = path.join(rutaActual, fichero)
+        res.sendFile(rutaCompleta)
     }
-    const rutaCompleta = path.join(rutaActual, fichero)
-    res.sendFile(rutaCompleta)
 })
 
 
@@ -59,13 +65,20 @@ app.post("/usuarios/ingreso", (req, res) => {
 })
 
 //parámetros de ruta
-app.get("/usuarios/:id", (req, res) => {
-    const paramId = req.params.id
-    const number = parseInt(paramId)
+app.get("/usuarios/:id/:campo", (req, res) => {
+    //const paramId = req.params.id
+    //const number = parseInt(paramId)
+    const {id, campo} = req.params
+    console.log(id, campo)
+    let number = undefined
+    if(id){
+        number = parseInt(id)
+    }
     if(number > 15){
         res.send("Eres admin")
+    }else{
+        res.send("Eres un visitante")
     }
-    res.send("Eres un visitante")
 })
 
 // ruta con comodín
@@ -79,8 +92,8 @@ app.get("/", (req, res) => {
 })
 //ruta no válida
 app.get("/{*splat}", (req, res) => {
-    res.status = 404
-    res.send("ERROR 404: RECURSO NO ENCONTRADO")
+    res.status(404)
+    .send("ERROR 404: RECURSO NO ENCONTRADO")
 }) // 404
 
 app.listen(port, () => {

@@ -11,7 +11,9 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
+    "cookie-parser": "^1.4.7",
     "express": "^5.2.1",
-    "is-even": "^1.0.0"
+    "is-even": "^1.0.0",
+    "redis": "^5.10.0"
   }
 }
