@@ -1,0 +1,47 @@
+.
+├── apiKeyMiddleware.mjs
+├── app.mjs
+├── ARQUITECTURA.md
+├── auth.mjs
+├── BOILERPLATE_README.md
+├── CHECKLIST.md
+├── ESTRUCTURA.txt
+├── GUIA_ESTUDIANTES.md
+├── index.mjs
+├── package.json
+├── README.md
+├── redisClient.mjs
+├── RESUMEN.md
+├── setup_database.sql
+├── src
+│   ├── app.mjs
+│   ├── config
+│   │   ├── database.mjs
+│   │   ├── README.md
+│   │   └── redis.mjs
+│   ├── controllers
+│   │   ├── apiKeyController.mjs
+│   │   └── README.md
+│   ├── middlewares
+│   │   ├── apiKeyMiddleware.mjs
+│   │   └── README.md
+│   ├── models
+│   │   ├── ApiKey.mjs
+│   │   └── README.md
+│   ├── repositories
+│   │   ├── apiKeyRepository.mjs
+│   │   └── README.md
+│   ├── routes
+│   │   ├── apiKeyRoutes.mjs
+│   │   ├── index.mjs
+│   │   └── README.md
+│   ├── services
+│   │   ├── apiKeyService.mjs
+│   │   └── README.md
+│   └── utils
+│       ├── apiKey.mjs
+│       └── README.md
+├── supabaseClient.mjs
+└── test.sh
+
+10 directories, 35 files
