@@ -1,0 +1,44 @@
+Ejercicio Practico: Juego "Adivina la palabra" Cliente-Servidor
+
+
+Servidor
+
+
+Cada cliente tiene un máximo de 8 intentos para adivinar la palabra.
+Por cada intento, el cliente envía un JSON con la palabra que intenta:{"intento": "palabra"}
+
+
+El servidor responde con un JSON indicando:
+
+"res": "GANADOR" si el cliente acierta la palabra.
+Al finalizar la partida (acierto), el servidor guarda en una lista de ultimos
+5 jugadores su nick y el numero de intentos usados.
+{
+  "res": "ok","datos": {"intentos": 4,"ultimos": lista_jugadores}
+}
+
+{
+  "res": "error", "datos": { "intentos_restantes": 6, "pista": "a*c***o"}
+}
+
+{
+  "res": "error", "datos": { "intentos_restantes": 7, "pista": "entrada invalida" }
+}
+
+Gestiona correctamente la concurrencia en el acceso a la lista de ultimos jugadores usando locks.
+
+
+Cliente
+El cliente se conecta al servidor TCP y envía su nick.
+Debe permitir al usuario introducir palabras hasta adivinar la palabra secreta o agotar los intentos.
+
+Debe validar localmente:
+Que la palabra no este vacia.
+Que no exceda un tamaño máximo definido (4 - 12 caracteres).
+Muestra al usuario la respuesta del servidor: pistas y numero de intentos restantes.
+Al terminar la partida, muestra la lista de ultimos 5 jugadores recibida del servidor.
+
+Requisitos adicionales
+Todos los mensajes entre cliente y servidor deben enviarse en formato JSON.
+El servidor debe manejar excepciones para evitar cierres inesperados.
+Debe poder soportar varios clientes jugando simultaneamente.

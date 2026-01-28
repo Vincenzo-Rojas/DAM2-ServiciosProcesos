@@ -1,0 +1,56 @@
+En este examen se evaluará el 100% de los criterios de evaluación asociados a la U.T. 3, tal y
+como se especifican en la programación didáctica del módulo.
+
+Es necesario gestionar las excepciones que puedan surgir, y cubrir los casos que puedan ser problemáticos.
+
+Ejercicio (10 Puntos)
+
+Vamos a hacer un ejercicio donde, utilizando sockets en Python, conectemos clientes a servidores.
+El programa consistirá en un juego de “adivina el número”, en el que por cada conexión de cliente.
+se creará una partida de adivinar el número.
+
+Requisitos:
+El número a adivinar va de 0 a 100.
+Se envía una pista para adivinar el número.
+Los mensajes que se envían son en formato JSON.
+Se guardan las partidas de los últimos 10 usuarios, donde se asocia un nick (nombre de jugador) a un número de intentos,
+en forma de cola (FIFO).
+
+El máximo número de intentos es de 10 por usuario.
+Cuando se termina la partida se muestra la puntuación y la lista de los últimos diez jugadores.
+Se tiene que usar un hilo por cada conexión.
+Gestiona el acceso concurrente de la lista de forma sincronizada.
+
+Puntuaciones:
+
+Cliente (5 Puntos)
+Servidor (5 Puntos)
+
+Secuencia de interacción cliente-servidor para el juego "Adivina el número"
+
+Implementa la lógica de comunicación entre cliente y servidor siguiendo esta secuencia:
+
+Inicio de sesión del jugador
+El cliente debe enviar un mensaje en formato JSON con el nick del jugador:{"nick": "nombre_usuario"}
+
+Envío de intentos
+El cliente envía un número como intento de adivinanza:{"num": valor}
+
+Respuesta del servidor
+El servidor responde con un mensaje JSON que incluye:
+
+Resultado (res): "error" si el número no es correcto, "ok" si se acierta.
+Datos (datos):
+intentos: número de intentos restantes.
+pista: "mayor" si el número a adivinar es mayor, "menor" si es menor.
+
+Ejemplo de respuesta incorrecta:
+{"res": "error", "datos": {"intentos": 9, "pista": "mayor"}}
+
+Repetición de intentos
+El cliente continúa enviando números hasta acertar o agotar los intentos.
+
+Finalización de la partida
+Cuando el número es adivinado correctamente, el servidor responde con:
+{"res": "ok", "datos": {"intentos": n, "ultimos": [...]}}
+Donde ultimos es la lista de los últimos 10 jugadores con su nick y número de intentos.
