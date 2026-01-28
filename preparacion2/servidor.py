@@ -134,7 +134,7 @@ def manejar_cliente(conn, addr):
             if len(palabra_jugador) < LONGITUD[0]:
                 enviar_json(conn, {"res": "error", "datos": { "intentos_restantes": intentos_restantes, "pista": f"La palabra mas corta es de {LONGITUD[0]} caracteres" }})
             elif len(palabra_jugador) > LONGITUD[1]:
-                enviar_json(conn, {"res": "error", "datos": { "intentos_restantes": intentos_restantes, "pista": f"La palabra mas larga es de {LONGITUD[0]} caracteres" }})
+                enviar_json(conn, {"res": "error", "datos": { "intentos_restantes": intentos_restantes, "pista": f"La palabra mas larga es de {LONGITUD[1]} caracteres" }})
             elif palabra_valida(palabra_jugador) is False:
                 enviar_json(conn, {"res": "error", "datos": { "intentos_restantes": intentos_restantes, "pista": "entrada invalida" }})           
             else:
@@ -142,8 +142,7 @@ def manejar_cliente(conn, addr):
                 if palabra_jugador == palabra_secreta:
                     with lock:
                         ultimos_jugadores.append({"nick": nick, "intentos_restantes": intentos_restantes})
-                        ultimos = list(ultimos_jugadores)
-                    enviar_json(conn, {"res": "GANADOR","datos": {"intentos_restantes": intentos_restantes,"ultimos": ultimos}})
+                    enviar_json(conn, {"res": "WINNER","datos": {"intentos_restantes": intentos_restantes,"ultimos": list(ultimos_jugadores)}})
                     return
                 #Si falla o acierta letras
                 else:
@@ -151,7 +150,7 @@ def manejar_cliente(conn, addr):
                     enviar_json(conn,{"res": "error", "datos": { "intentos_restantes": intentos_restantes, "pista": letras_acertadas}})
         #Muestra los ultimos 5 ganadores, si no hay mas intentos
         if intentos_restantes == 0:
-            enviar_json(conn, {"res": "ok","datos": {"intentos_restantes": intentos_restantes,"ultimos": ultimos_jugadores}})
+            enviar_json(conn, {"res": "LOSER","datos": {"intentos_restantes": intentos_restantes,"ultimos": list(ultimos_jugadores)}})
         
     except Exception as e:
         print(f"Error con el cliente {addr}: {e}")

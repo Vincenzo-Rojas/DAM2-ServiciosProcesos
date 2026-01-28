@@ -62,8 +62,14 @@ def jugar_adivina_numero():
             res = respuesta.get("res")
             datos = respuesta.get("datos")
 
-            if res == "GANADOR":
-                print(f"Felicidades! Palabra adivinadam te quedaban {datos['intentos_restantes']} intentos")
+            if res == "WINNER":
+                print(f"Felicidades! Palabra adivinada. Te quedaban {datos['intentos_restantes']} intentos")
+                print("Ultimos 5 jugadores WINNER's:")
+                for jugador in datos["ultimos"]:
+                    print(f"{jugador['nick']} - {jugador['intentos_restantes']} intentos")
+                break
+            elif res == "LOSER":
+                print("No te quedan intentos - LOSER")
                 print("Ultimos 5 jugadores WINNER's:")
                 for jugador in datos["ultimos"]:
                     print(f"{jugador['nick']} - {jugador['intentos_restantes']} intentos")
